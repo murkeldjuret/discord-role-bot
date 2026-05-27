@@ -33,6 +33,22 @@ async def on_guild_channel_create(channel):
             print(f"Gav Applicant och tog bort Unverified från {member.name}")
 
 @client.event
+async def on_guild_channel_delete(channel):
+    if channel.name.startswith(TICKET_PREFIX):
+        guild = channel.guild
+        applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
+        
+        for member in guild.members:
+            if member.bot:
+                continue
+            if applicant_role and applicant_role in member.roles:
+                try:
+                    await member.kick(reason="Application stängd utan godkännande")
+                    print(f"Kickade {member.name}")
+                except Exception as e:
+                    print(f"Kunde inte kicka {member.name}: {e}")
+
+@client.event
 async def on_member_update(before, after):
     before_roles = [r.name for r in before.roles]
     after_roles = [r.name for r in after.roles]
