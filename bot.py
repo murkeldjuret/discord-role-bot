@@ -11,6 +11,7 @@ REMOVE_UNVERIFIED_WHEN = ["Member | Gucci Goobers", "Applicant"]
 UNVERIFIED_ROLE_NAME = "Unverified"
 APPLICANT_ROLE_NAME = "Applicant"
 TICKET_PREFIX = "ticket-"
+CLOSED_PREFIX = "closed-"
 
 @client.event
 async def on_ready():
@@ -34,7 +35,7 @@ async def on_guild_channel_create(channel):
 
 @client.event
 async def on_guild_channel_delete(channel):
-    if channel.name.startswith(TICKET_PREFIX):
+    if channel.name.startswith(CLOSED_PREFIX):
         guild = channel.guild
         applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
         
