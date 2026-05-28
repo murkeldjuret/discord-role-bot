@@ -31,7 +31,8 @@ class ApproveView(discord.ui.View):
             await self.applicant.add_roles(member_role)
         if applicant_role and applicant_role in self.applicant.roles:
             await self.applicant.remove_roles(applicant_role)
-        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Member!")
+        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Member! Closing ticket...")
+        await interaction.channel.delete()
         self.stop()
 
     @discord.ui.button(label="✅ Approve as Guest", style=discord.ButtonStyle.blurple)
@@ -43,7 +44,8 @@ class ApproveView(discord.ui.View):
             await self.applicant.add_roles(guest_role)
         if applicant_role and applicant_role in self.applicant.roles:
             await self.applicant.remove_roles(applicant_role)
-        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Guest!")
+        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Guest! Closing ticket...")
+        await interaction.channel.delete()
         self.stop()
 
 class MemberApproveView(ApproveView):
