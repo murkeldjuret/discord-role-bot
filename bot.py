@@ -14,8 +14,8 @@ MEMBER_ROLE_NAME = "Member | Gucci Goobers"
 GUEST_ROLE_NAME = "Guest"
 TICKET_PREFIX = "ticket-"
 CLOSED_PREFIX = "closed-"
-GUEST_CATEGORY = "Guest Applications"
-MEMBER_CATEGORY = "Applications"
+GUEST_CATEGORY = "📋 Guest Applications"
+MEMBER_CATEGORY = "📋 Applications"
 
 class ApproveView(discord.ui.View):
     def __init__(self, applicant):
@@ -83,6 +83,7 @@ async def on_guild_channel_create(channel):
         return
 
     category_name = channel.category.name if channel.category else ""
+    print(f"Ticket created in category: {category_name}")
 
     if category_name == MEMBER_CATEGORY:
         view = MemberApproveView(applicant)
