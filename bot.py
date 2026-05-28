@@ -52,6 +52,13 @@ def get_next_coc_events():
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
  
+    # Ranked Week: ends every Monday 05:00 UTC
+    days_until_monday = (0 - now.weekday()) % 7
+    ranked = now.replace(hour=5, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+    if ranked <= now:
+        ranked += timedelta(weeks=1)
+    events.append(("Ranked Week", ranked))
+ 
     return events
  
  
