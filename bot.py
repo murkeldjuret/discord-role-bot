@@ -19,32 +19,31 @@ CLOSED_PREFIX = "closed-"
 GUEST_CATEGORY = "📋 Guest Applications"
 MEMBER_CATEGORY = "📋 Applications"
  
-# --- CoC Event Countdown Config ---
-COUNTDOWN_CATEGORY_NAME = "📅 Events"  # Category where countdown channels will live
+COUNTDOWN_CATEGORY_NAME = "📅 Events"
+ 
  
 def get_next_coc_events():
     """Returns upcoming CoC events with their next occurrence datetimes (UTC)."""
     now = datetime.now(timezone.utc)
     events = []
  
-    # --- Raid Weekend: starts every Friday 07:00 UTC ---
+    # Raid Weekend: starts every Friday 07:00 UTC
     days_until_friday = (4 - now.weekday()) % 7
     raid = now.replace(hour=7, minute=0, second=0, microsecond=0) + timedelta(days=days_until_friday)
     if raid <= now:
         raid += timedelta(weeks=1)
     events.append(("Raid Weekend", raid))
  
-    # --- Clan Games: starts 22nd every month 08:00 UTC ---
+    # Clan Games: starts 22nd every month 08:00 UTC
     clan_games = now.replace(day=22, hour=8, minute=0, second=0, microsecond=0)
     if clan_games <= now:
-        # Move to next month
         if now.month == 12:
             clan_games = clan_games.replace(year=now.year + 1, month=1)
         else:
             clan_games = clan_games.replace(month=now.month + 1)
     events.append(("Clan Games", clan_games))
  
-    # --- CWL: starts 1st every month 08:00 UTC ---
+    # CWL: starts 1st every month 08:00 UTC
     cwl = now.replace(day=1, hour=8, minute=0, second=0, microsecond=0)
     if cwl <= now:
         if now.month == 12:
@@ -53,7 +52,7 @@ def get_next_coc_events():
             cwl = cwl.replace(month=now.month + 1)
     events.append(("CWL", cwl))
  
-    # --- EOS / League Reset: starts 15th every month 05:00 UTC ---
+    # EOS / League Reset: starts 15th every month 05:00 UTC
     eos = now.replace(day=15, hour=5, minute=0, second=0, microsecond=0)
     if eos <= now:
         if now.month == 12:
@@ -62,10 +61,18 @@ def get_next_coc_events():
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
  
+    # Clan War: starts every Monday 08:00 UTC
+    days_until_monday = (0 - now.weekday()) % 7
+    clan_war = now.replace(hour=8, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+    if clan_war <= now:
+        clan_war += timedelta(weeks=1)
+    events.append(("Clan War", clan_war))
+ 
     return events
  
+ 
 def format_countdown(event_name, event_time):
-    """Format: 'CWL: 3D 15H'"""
+    """Format: 'Raid Weekend: 3D 15H' or 'CWL: 2H'"""
     now = datetime.now(timezone.utc)
     diff = event_time - now
     total_seconds = int(diff.total_seconds())
@@ -76,38 +83,60 @@ def format_countdown(event_name, event_time):
     if days > 0:
         return f"{event_name}: {days}D {hours}H"
     else:
-        minutes = (diff.seconds % 3600) // 60
-        return f"{event_name}: {hours}H {minutes}M"
+        return f"{event_name}: {hours}H"
+ 
  
 async def update_countdown_channels(guild):
     """Creates or updates voice channels with CoC event countdowns."""
-    # Find or create the countdown category
     category = discord.utils.get(guild.categories, name=COUNTDOWN_CATEGORY_NAME)
     if category is None:
         category = await guild.create_category(COUNTDOWN_CATEGORY_NAME)
-        # Make it read-only for everyone
         await category.set_permissions(guild.default_role, connect=False, view_channel=True)
  
     events = get_next_coc_events()
  
     for event_name, event_time in events:
         channel_name = format_countdown(event_name, event_time)
-        # Find existing channel for this event
+ 
         existing = discord.utils.find(
-            lambda c: c.name.startswith(event_name) and c.category_id == category.id,
+            lambda c, name=event_name: c.name.startswith(name) and c.category_id == category.id,
             guild.voice_channels
         )
-        if existing:
-            if existing.name != channel_name:
-                await existing.edit(name=channel_name)
-                print(f"Updated: {channel_name}")
-        else:
-            vc = await guild.create_voice_channel(channel_name, category=category)
-            await vc.set_permissions(guild.default_role, connect=False, view_channel=True)
-            print(f"Created: {channel_name}")
+ 
+        try:
+            if existing:
+                if existing.name != channel_name:
+                    await existing.edit(name=channel_name)
+                    print(f"Updated: {channel_name}")
+                    await asyncio.sleep(2)
+            else:
+                vc = await guild.create_voice_channel(channel_name, category=category)
+                await vc.set_permissions(guild.default_role, connect=False, view_channel=True)
+                print(f"Created: {channel_name}")
+                await asyncio.sleep(2)
+        except discord.HTTPException as e:
+            if e.status == 429:
+                retry_after = e.retry_after if hasattr(e, 'retry_after') else 60
+                print(f"Rate limited on '{event_name}', waiting {retry_after:.1f}s...")
+                await asyncio.sleep(retry_after)
+                try:
+                    if existing:
+                        await existing.edit(name=channel_name)
+                        print(f"Retried and updated: {channel_name}")
+                    else:
+                        vc = await guild.create_voice_channel(channel_name, category=category)
+                        await vc.set_permissions(guild.default_role, connect=False, view_channel=True)
+                        print(f"Retried and created: {channel_name}")
+                except Exception as retry_err:
+                    print(f"Retry also failed for '{event_name}': {retry_err}")
+            else:
+                print(f"HTTP error for '{event_name}': {e}")
+        except Exception as e:
+            print(f"Unexpected error for '{event_name}': {e}")
+ 
  
 async def countdown_loop():
-    """Updates countdown channels every hour."""
+    """Updates countdown channels every hour (since format only shows D/H)."""
     await client.wait_until_ready()
     while not client.is_closed():
         for guild in client.guilds:
@@ -115,7 +144,8 @@ async def countdown_loop():
                 await update_countdown_channels(guild)
             except Exception as e:
                 print(f"Error updating countdowns for {guild.name}: {e}")
-        await asyncio.sleep(3600)  # Update every hour
+        await asyncio.sleep(3600)  # Every hour
+ 
  
 # --- Approval Views ---
  
@@ -133,7 +163,7 @@ class ApproveView(discord.ui.View):
             await self.applicant.add_roles(member_role)
         if applicant_role and applicant_role in self.applicant.roles:
             await self.applicant.remove_roles(applicant_role)
-        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Member! Closing ticket...")
+        await interaction.response.send_message(f"✅ {self.applicant.mention} är nu en Member! Stänger ticket...")
         await interaction.channel.delete()
         self.stop()
  
@@ -146,19 +176,22 @@ class ApproveView(discord.ui.View):
             await self.applicant.add_roles(guest_role)
         if applicant_role and applicant_role in self.applicant.roles:
             await self.applicant.remove_roles(applicant_role)
-        await interaction.response.send_message(f"✅ {self.applicant.mention} is now a Guest! Closing ticket...")
+        await interaction.response.send_message(f"✅ {self.applicant.mention} är nu en Guest! Stänger ticket...")
         await interaction.channel.delete()
         self.stop()
+ 
  
 class MemberApproveView(ApproveView):
     def __init__(self, applicant):
         super().__init__(applicant)
         self.remove_item(self.approve_guest)
  
+ 
 class GuestApproveView(ApproveView):
     def __init__(self, applicant):
         super().__init__(applicant)
         self.remove_item(self.approve_member)
+ 
  
 # --- Events ---
  
@@ -166,6 +199,7 @@ class GuestApproveView(ApproveView):
 async def on_ready():
     print(f"Logged in as {client.user}")
     client.loop.create_task(countdown_loop())
+ 
  
 @client.event
 async def on_guild_channel_create(channel):
@@ -199,6 +233,7 @@ async def on_guild_channel_create(channel):
         view = GuestApproveView(applicant)
         await channel.send("**🎟️ Application Controls**", view=view)
  
+ 
 @client.event
 async def on_guild_channel_delete(channel):
     if channel.name.startswith(CLOSED_PREFIX):
@@ -215,6 +250,7 @@ async def on_guild_channel_delete(channel):
                 except Exception as e:
                     print(f"Could not kick {member.name}: {e}")
  
+ 
 @client.event
 async def on_member_update(before, after):
     before_roles = [r.name for r in before.roles]
@@ -227,5 +263,6 @@ async def on_member_update(before, after):
                 await after.remove_roles(unverified)
                 print(f"Removed Unverified from {after.name}")
             break
+ 
  
 client.run(os.environ["DISCORD_TOKEN"])
