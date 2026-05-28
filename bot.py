@@ -64,7 +64,7 @@ def format_countdown(event_name, event_time):
         return f"{event_name}: NOW"
     days = diff.days
     hours = diff.seconds // 3600
-    minutes = (diff.seconds % 3600) // 60
+    minutes = ((diff.seconds % 3600) // 60 // 5) * 5
     if days > 0:
         return f"{event_name}: {days}D {hours}H"
     else:
@@ -264,4 +264,3 @@ async def on_member_update(before, after):
  
  
 client.run(os.environ["DISCORD_TOKEN"])
- 
