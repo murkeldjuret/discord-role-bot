@@ -34,15 +34,6 @@ def get_next_coc_events():
         raid += timedelta(weeks=1)
     events.append(("Raid Weekend", raid))
  
-    # Clan Games: starts 22nd every month 08:00 UTC
-    clan_games = now.replace(day=22, hour=8, minute=0, second=0, microsecond=0)
-    if clan_games <= now:
-        if now.month == 12:
-            clan_games = clan_games.replace(year=now.year + 1, month=1)
-        else:
-            clan_games = clan_games.replace(month=now.month + 1)
-    events.append(("Clan Games", clan_games))
- 
     # CWL: starts 1st every month 08:00 UTC
     cwl = now.replace(day=1, hour=8, minute=0, second=0, microsecond=0)
     if cwl <= now:
@@ -61,18 +52,11 @@ def get_next_coc_events():
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
  
-    # Clan War: starts every Monday 08:00 UTC
-    days_until_monday = (0 - now.weekday()) % 7
-    clan_war = now.replace(hour=8, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
-    if clan_war <= now:
-        clan_war += timedelta(weeks=1)
-    events.append(("Clan War", clan_war))
- 
     return events
  
  
 def format_countdown(event_name, event_time):
-    """Format: 'Raid Weekend: 3D 15H' or 'CWL: 2H'"""
+    """Format: 'Raid Weekend: 3D 15H' or 'CWL: 2H 35M' when under 24h."""
     now = datetime.now(timezone.utc)
     diff = event_time - now
     total_seconds = int(diff.total_seconds())
@@ -80,10 +64,22 @@ def format_countdown(event_name, event_time):
         return f"{event_name}: NOW"
     days = diff.days
     hours = diff.seconds // 3600
+    minutes = (diff.seconds % 3600) // 60
     if days > 0:
         return f"{event_name}: {days}D {hours}H"
     else:
-        return f"{event_name}: {hours}H"
+        return f"{event_name}: {hours}H {minutes}M"
+ 
+ 
+def get_sleep_interval():
+    """Returns 300s (5 min) if any event is within 24h, otherwise 3600s (1h)."""
+    now = datetime.now(timezone.utc)
+    events = get_next_coc_events()
+    for _, event_time in events:
+        diff = event_time - now
+        if diff.total_seconds() < 86400:
+            return 300
+    return 3600
  
  
 async def update_countdown_channels(guild):
@@ -136,7 +132,7 @@ async def update_countdown_channels(guild):
  
  
 async def countdown_loop():
-    """Updates countdown channels every hour (since format only shows D/H)."""
+    """Updates countdown channels every hour, or every 5 min if any event is within 24h."""
     await client.wait_until_ready()
     while not client.is_closed():
         for guild in client.guilds:
@@ -144,7 +140,9 @@ async def countdown_loop():
                 await update_countdown_channels(guild)
             except Exception as e:
                 print(f"Error updating countdowns for {guild.name}: {e}")
-        await asyncio.sleep(3600)  # Every hour
+        interval = get_sleep_interval()
+        print(f"Next countdown update in {interval}s")
+        await asyncio.sleep(interval)
  
  
 # --- Approval Views ---
@@ -266,3 +264,4 @@ async def on_member_update(before, after):
  
  
 client.run(os.environ["DISCORD_TOKEN"])
+ 
