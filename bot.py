@@ -141,7 +141,7 @@ async def countdown_loop():
         await asyncio.sleep(interval)
 
 
-# ─── Approval Views ───
+# --- Approval Views ---
 
 class ApproveView(discord.ui.View):
     def __init__(self, applicant):
@@ -187,16 +187,25 @@ class GuestApproveView(ApproveView):
         self.remove_item(self.approve_member)
 
 
-# ─── Events ───
+# --- Events ---
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    # Load ZapQuake cog
-    await bot.load_extension("zapquake_cog")
-    # Sync slash commands globally (or to a specific guild for instant testing)
-    await bot.tree.sync()
-    print("Slash commands synced.")
+    try:
+        await bot.load_extension("zapquake_cog")
+        print("ZapQuake cog loaded!")
+    except Exception as e:
+        print(f"Failed to load cog: {e}")
+        import traceback
+        traceback.print_exc()
+    try:
+        guild = discord.Object(id=1509185197336432790)
+        bot.tree.copy_global_to(guild=guild)
+        await bot.tree.sync(guild=guild)
+        print("Slash commands synced!")
+    except Exception as e:
+        print(f"Failed to sync: {e}")
     bot.loop.create_task(countdown_loop())
 
 
@@ -275,4 +284,3 @@ async def on_member_update(before, after):
 
 
 bot.run(os.environ["DISCORD_TOKEN"])
- 
