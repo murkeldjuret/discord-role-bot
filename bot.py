@@ -20,6 +20,7 @@ GUEST_CATEGORY = "📋 Guest Applications"
 MEMBER_CATEGORY = "📋 Applications"
  
 COUNTDOWN_CATEGORY_NAME = "📅 Events"
+MODERATOR_ROLE_NAME = "Moderator"
  
  
 def get_next_coc_events():
@@ -51,7 +52,7 @@ def get_next_coc_events():
         else:
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
- 
+
     # Ranked Week: ends every Monday 05:00 UTC
     days_until_monday = (0 - now.weekday()) % 7
     ranked = now.replace(hour=5, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
@@ -227,6 +228,11 @@ async def on_guild_channel_create(channel):
  
     if applicant is None:
         return
+
+    # Give Moderator role access to this ticket channel
+    moderator_role = discord.utils.get(guild.roles, name=MODERATOR_ROLE_NAME)
+    if moderator_role:
+        await channel.set_permissions(moderator_role, view_channel=True, send_messages=True, read_message_history=True)
  
     category_name = channel.category.name if channel.category else ""
     print(f"Ticket created in category: {category_name}")
