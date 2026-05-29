@@ -1,14 +1,15 @@
 import discord
+from discord.ext import commands
 import os
 import asyncio
 from datetime import datetime, timezone, timedelta
- 
+
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
- 
-client = discord.Client(intents=intents)
- 
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 REMOVE_UNVERIFIED_WHEN = ["Member | Gucci Goobers", "Applicant"]
 UNVERIFIED_ROLE_NAME = "Unverified"
 APPLICANT_ROLE_NAME = "Applicant"
@@ -18,24 +19,21 @@ TICKET_PREFIX = "ticket-"
 CLOSED_PREFIX = "closed-"
 GUEST_CATEGORY = "📋 Guest Applications"
 MEMBER_CATEGORY = "📋 Applications"
- 
+
 COUNTDOWN_CATEGORY_NAME = "📅 Events"
 MODERATOR_ROLE_NAME = "Moderator"
- 
- 
+
+
 def get_next_coc_events():
-    """Returns upcoming CoC events with their next occurrence datetimes (UTC)."""
     now = datetime.now(timezone.utc)
     events = []
- 
-    # Raid Weekend: starts every Friday 07:00 UTC
+
     days_until_friday = (4 - now.weekday()) % 7
     raid = now.replace(hour=7, minute=0, second=0, microsecond=0) + timedelta(days=days_until_friday)
     if raid <= now:
         raid += timedelta(weeks=1)
     events.append(("Raid Weekend", raid))
- 
-    # CWL: starts 1st every month 08:00 UTC
+
     cwl = now.replace(day=1, hour=8, minute=0, second=0, microsecond=0)
     if cwl <= now:
         if now.month == 12:
@@ -43,8 +41,7 @@ def get_next_coc_events():
         else:
             cwl = cwl.replace(month=now.month + 1)
     events.append(("CWL", cwl))
- 
-    # EOS / League Reset: starts 15th every month 05:00 UTC
+
     eos = now.replace(day=15, hour=5, minute=0, second=0, microsecond=0)
     if eos <= now:
         if now.month == 12:
@@ -52,19 +49,17 @@ def get_next_coc_events():
         else:
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
- 
-    # Ranked Week: ends every Monday 05:00 UTC
+
     days_until_monday = (0 - now.weekday()) % 7
     ranked = now.replace(hour=5, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
     if ranked <= now:
         ranked += timedelta(weeks=1)
     events.append(("Ranked Week", ranked))
- 
+
     return events
- 
- 
+
+
 def format_countdown(event_name, event_time):
-    """Format: 'Raid Weekend: 3D 15H' or 'CWL: 2H 35M' when under 24h."""
     now = datetime.now(timezone.utc)
     diff = event_time - now
     total_seconds = int(diff.total_seconds())
@@ -77,10 +72,9 @@ def format_countdown(event_name, event_time):
         return f"{event_name}: {days}D {hours}H"
     else:
         return f"{event_name}: {hours}H {minutes}M"
- 
- 
+
+
 def get_sleep_interval():
-    """Returns 300s (5 min) if any event is within 24h, otherwise 3600s (1h)."""
     now = datetime.now(timezone.utc)
     events = get_next_coc_events()
     for _, event_time in events:
@@ -88,25 +82,22 @@ def get_sleep_interval():
         if diff.total_seconds() < 86400:
             return 300
     return 3600
- 
- 
+
+
 async def update_countdown_channels(guild):
-    """Creates or updates voice channels with CoC event countdowns."""
     category = discord.utils.get(guild.categories, name=COUNTDOWN_CATEGORY_NAME)
     if category is None:
         category = await guild.create_category(COUNTDOWN_CATEGORY_NAME)
         await category.set_permissions(guild.default_role, connect=False, view_channel=True)
- 
+
     events = get_next_coc_events()
- 
+
     for event_name, event_time in events:
         channel_name = format_countdown(event_name, event_time)
- 
         existing = discord.utils.find(
             lambda c, name=event_name: c.name.startswith(name) and c.category_id == category.id,
             guild.voice_channels
         )
- 
         try:
             if existing:
                 if existing.name != channel_name:
@@ -120,30 +111,27 @@ async def update_countdown_channels(guild):
                 await asyncio.sleep(2)
         except discord.HTTPException as e:
             if e.status == 429:
-                retry_after = e.retry_after if hasattr(e, 'retry_after') else 60
+                retry_after = e.retry_after if hasattr(e, "retry_after") else 60
                 print(f"Rate limited on '{event_name}', waiting {retry_after:.1f}s...")
                 await asyncio.sleep(retry_after)
                 try:
                     if existing:
                         await existing.edit(name=channel_name)
-                        print(f"Retried and updated: {channel_name}")
                     else:
                         vc = await guild.create_voice_channel(channel_name, category=category)
                         await vc.set_permissions(guild.default_role, connect=False, view_channel=True)
-                        print(f"Retried and created: {channel_name}")
                 except Exception as retry_err:
-                    print(f"Retry also failed for '{event_name}': {retry_err}")
+                    print(f"Retry failed for '{event_name}': {retry_err}")
             else:
                 print(f"HTTP error for '{event_name}': {e}")
         except Exception as e:
             print(f"Unexpected error for '{event_name}': {e}")
- 
- 
+
+
 async def countdown_loop():
-    """Updates countdown channels every hour, or every 5 min if any event is within 24h."""
-    await client.wait_until_ready()
-    while not client.is_closed():
-        for guild in client.guilds:
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        for guild in bot.guilds:
             try:
                 await update_countdown_channels(guild)
             except Exception as e:
@@ -151,15 +139,15 @@ async def countdown_loop():
         interval = get_sleep_interval()
         print(f"Next countdown update in {interval}s")
         await asyncio.sleep(interval)
- 
- 
-# --- Approval Views ---
- 
+
+
+# ─── Approval Views ───
+
 class ApproveView(discord.ui.View):
     def __init__(self, applicant):
         super().__init__(timeout=None)
         self.applicant = applicant
- 
+
     @discord.ui.button(label="✅ Approve as Member", style=discord.ButtonStyle.green)
     async def approve_member(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
@@ -172,7 +160,7 @@ class ApproveView(discord.ui.View):
         await interaction.response.send_message(f"✅ {self.applicant.mention} är nu en Member! Stänger ticket...")
         await interaction.channel.delete()
         self.stop()
- 
+
     @discord.ui.button(label="✅ Approve as Guest", style=discord.ButtonStyle.blurple)
     async def approve_guest(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
@@ -185,37 +173,42 @@ class ApproveView(discord.ui.View):
         await interaction.response.send_message(f"✅ {self.applicant.mention} är nu en Guest! Stänger ticket...")
         await interaction.channel.delete()
         self.stop()
- 
- 
+
+
 class MemberApproveView(ApproveView):
     def __init__(self, applicant):
         super().__init__(applicant)
         self.remove_item(self.approve_guest)
- 
- 
+
+
 class GuestApproveView(ApproveView):
     def __init__(self, applicant):
         super().__init__(applicant)
         self.remove_item(self.approve_member)
- 
- 
-# --- Events ---
- 
-@client.event
+
+
+# ─── Events ───
+
+@bot.event
 async def on_ready():
-    print(f"Logged in as {client.user}")
-    client.loop.create_task(countdown_loop())
- 
- 
-@client.event
+    print(f"Logged in as {bot.user}")
+    # Load ZapQuake cog
+    await bot.load_extension("zapquake_cog")
+    # Sync slash commands globally (or to a specific guild for instant testing)
+    await bot.tree.sync()
+    print("Slash commands synced.")
+    bot.loop.create_task(countdown_loop())
+
+
+@bot.event
 async def on_guild_channel_create(channel):
     if not channel.name.startswith(TICKET_PREFIX):
         return
- 
+
     guild = channel.guild
     applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
     unverified_role = discord.utils.get(guild.roles, name=UNVERIFIED_ROLE_NAME)
- 
+
     applicant = None
     for member in channel.members:
         if member.bot:
@@ -225,39 +218,37 @@ async def on_guild_channel_create(channel):
         if unverified_role and unverified_role in member.roles:
             await member.remove_roles(unverified_role)
         applicant = member
- 
+
     if applicant is None:
         return
- 
-    # Give Moderator role access to this ticket channel
+
     moderator_role = discord.utils.get(guild.roles, name=MODERATOR_ROLE_NAME)
     if moderator_role:
         await channel.set_permissions(moderator_role, view_channel=True, send_messages=True, read_message_history=True)
- 
+
     category_name = channel.category.name if channel.category else ""
     print(f"Ticket created in category: {category_name}")
- 
+
     if category_name == MEMBER_CATEGORY:
         view = MemberApproveView(applicant)
         await channel.send("**🎟️ Application Controls**", view=view)
     elif category_name == GUEST_CATEGORY:
         view = GuestApproveView(applicant)
         await channel.send("**🎟️ Application Controls**", view=view)
- 
- 
-@client.event
+
+
+@bot.event
 async def on_guild_channel_delete(channel):
-    # Only kick if this was an application ticket (closed- prefix) in an application category
     if not channel.name.startswith(CLOSED_PREFIX):
         return
- 
+
     category_name = channel.category.name if channel.category else ""
     if category_name not in (MEMBER_CATEGORY, GUEST_CATEGORY):
         return
- 
+
     guild = channel.guild
     applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
- 
+
     for member in guild.members:
         if member.bot:
             continue
@@ -267,13 +258,13 @@ async def on_guild_channel_delete(channel):
                 print(f"Kicked {member.name}")
             except Exception as e:
                 print(f"Could not kick {member.name}: {e}")
- 
- 
-@client.event
+
+
+@bot.event
 async def on_member_update(before, after):
     before_roles = [r.name for r in before.roles]
     after_roles = [r.name for r in after.roles]
- 
+
     for role_name in REMOVE_UNVERIFIED_WHEN:
         if role_name not in before_roles and role_name in after_roles:
             unverified = discord.utils.get(after.guild.roles, name=UNVERIFIED_ROLE_NAME)
@@ -281,7 +272,7 @@ async def on_member_update(before, after):
                 await after.remove_roles(unverified)
                 print(f"Removed Unverified from {after.name}")
             break
- 
- 
-client.run(os.environ["DISCORD_TOKEN"])
+
+
+bot.run(os.environ["DISCORD_TOKEN"])
  
