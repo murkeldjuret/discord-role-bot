@@ -52,7 +52,7 @@ def get_next_coc_events():
         else:
             eos = eos.replace(month=now.month + 1)
     events.append(("EOS", eos))
-
+ 
     # Ranked Week: ends every Monday 05:00 UTC
     days_until_monday = (0 - now.weekday()) % 7
     ranked = now.replace(hour=5, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
@@ -228,7 +228,7 @@ async def on_guild_channel_create(channel):
  
     if applicant is None:
         return
-
+ 
     # Give Moderator role access to this ticket channel
     moderator_role = discord.utils.get(guild.roles, name=MODERATOR_ROLE_NAME)
     if moderator_role:
@@ -247,19 +247,26 @@ async def on_guild_channel_create(channel):
  
 @client.event
 async def on_guild_channel_delete(channel):
-    if channel.name.startswith(CLOSED_PREFIX):
-        guild = channel.guild
-        applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
+    # Only kick if this was an application ticket (closed- prefix) in an application category
+    if not channel.name.startswith(CLOSED_PREFIX):
+        return
  
-        for member in guild.members:
-            if member.bot:
-                continue
-            if applicant_role and applicant_role in member.roles:
-                try:
-                    await member.kick(reason="Application closed without approval")
-                    print(f"Kicked {member.name}")
-                except Exception as e:
-                    print(f"Could not kick {member.name}: {e}")
+    category_name = channel.category.name if channel.category else ""
+    if category_name not in (MEMBER_CATEGORY, GUEST_CATEGORY):
+        return
+ 
+    guild = channel.guild
+    applicant_role = discord.utils.get(guild.roles, name=APPLICANT_ROLE_NAME)
+ 
+    for member in guild.members:
+        if member.bot:
+            continue
+        if applicant_role and applicant_role in member.roles:
+            try:
+                await member.kick(reason="Application closed without approval")
+                print(f"Kicked {member.name}")
+            except Exception as e:
+                print(f"Could not kick {member.name}: {e}")
  
  
 @client.event
@@ -277,3 +284,4 @@ async def on_member_update(before, after):
  
  
 client.run(os.environ["DISCORD_TOKEN"])
+ 
